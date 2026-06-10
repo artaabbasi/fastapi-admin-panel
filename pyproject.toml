@@ -4,9 +4,23 @@ build-backend = "hatchling.build"
 
 [project]
 name = "auto-fastapi-admin-panel"
-version = "0.1.0"
-description = "Auto-generated admin panel for FastAPI + SQLAlchemy + Alembic projects"
+version = "0.1.1"
+description = "Drop-in admin panel for FastAPI + SQLAlchemy projects. Auto-discovers your models via Alembic, provides full CRUD, JWT auth, and a dark React UI — integrated in 3 lines."
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
+keywords = ["fastapi", "admin", "sqlalchemy", "alembic", "crud", "panel", "dashboard"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "fastapi>=0.110.0",
     "sqlalchemy>=2.0.0",

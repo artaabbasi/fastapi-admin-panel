@@ -26,7 +26,7 @@ Auto-generated admin panel for FastAPI + SQLAlchemy + Alembic projects.
 ## Installation
 
 ```bash
-pip install fastapi-admin-panel
+pip install auto-fastapi-admin-panel
 ```
 
 The wheel ships with the pre-built frontend — no Node.js required.
@@ -334,7 +334,7 @@ No company behind this — just spare-time development. All contributions welcom
 - **Docs** — typos, unclear wording, missing examples
 
 ```bash
-git clone https://github.com/yourname/fastapi-admin-panel
+git clone https://github.com/artaabbasi/fastapi-admin-panel
 pip install -e ".[dev]"
 python scripts/build.py
 pytest
