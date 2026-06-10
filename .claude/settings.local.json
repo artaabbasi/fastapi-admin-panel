@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/artaabbasi/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.5.0/.claude/skills/ui-ux-pro-max/**)",
+      "Bash(python scripts/search.py \"admin panel data management SaaS professional dark\" --design-system -p \"FastAPI Admin Panel\" -f markdown)"
+    ]
+  }
+}
