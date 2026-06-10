@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fastapi-admin-panel"
+name = "auto-fastapi-admin-panel"
 version = "0.1.0"
 description = "Auto-generated admin panel for FastAPI + SQLAlchemy + Alembic projects"
 requires-python = ">=3.10"
