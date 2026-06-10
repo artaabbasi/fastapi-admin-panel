@@ -10,6 +10,7 @@ Auto-generated admin panel for FastAPI + SQLAlchemy + Alembic projects.
 - Bulk-select and bulk-delete rows
 - DB-backed admin user authentication (JWT)
 - Admin user management UI (create, edit, deactivate, change password, delete)
+- Sync and async SQLAlchemy engine support
 - React + TypeScript frontend with dark OLED theme
 - 3 lines to integrate into any existing FastAPI project
 
@@ -18,65 +19,151 @@ Auto-generated admin panel for FastAPI + SQLAlchemy + Alembic projects.
 ## Requirements
 
 - Python 3.10+
-- Node.js 18+ (only needed to build the frontend from source; the PyPI wheel includes the pre-built frontend)
 - PostgreSQL or any SQLAlchemy-supported database
 
 ---
 
 ## Installation
 
-### From PyPI (recommended)
-
 ```bash
 pip install fastapi-admin-panel
 ```
 
-The published wheel ships with the pre-built frontend — **no Node.js required**.
-
-### From source (development)
-
-```bash
-git clone https://github.com/yourname/fastapi-admin-panel
-cd fastapi-admin-panel
-
-# Install Python package in editable mode
-pip install -e ".[dev]"
-
-# Build the frontend (required once, or after frontend changes)
-python scripts/build.py
-```
+The wheel ships with the pre-built frontend — no Node.js required.
 
 ---
 
-## Integration (3 lines in main.py)
+## Integration
+
+There are three ways to add the panel, depending on how your project is structured.
+
+---
+
+### Way 1 — Auto-discovery via Alembic (recommended)
+
+If your project already uses Alembic, this is all you need. The panel reads
+`alembic.ini` automatically to find your `Base` and all registered models.
 
 ```python
+# main.py
 import os
-from pathlib import Path
-
 from fastapi import FastAPI
 from sqlalchemy import create_engine
-
 from fastapi_admin_panel import AdminPanel, AdminConfig
 
-# Import your models BEFORE AdminPanel so SQLAlchemy registers them
-from myapp.models import Base
+# Import your model modules first so SQLAlchemy registers them
+from myapp import models  # noqa: F401
 
 app = FastAPI()
 engine = create_engine(os.environ["DATABASE_URL"])
 
-config = AdminConfig(
-    secret_key=os.environ["ADMIN_SECRET_KEY"],
-    title="My Project Admin",
-    prefix="/admin",
-)
+config = AdminConfig(secret_key=os.environ["ADMIN_SECRET_KEY"])
 panel = AdminPanel(app, engine, config=config)
-# Open http://localhost:8000/admin
 ```
 
-> **Important:** Import your model modules before creating `AdminPanel`. If your
-> `Base = declarative_base()` is in one file and models are in others, import
-> those model files first so SQLAlchemy has registered them.
+The panel looks for `alembic.ini` next to `main.py`. All common layouts work:
+
+```ini
+script_location = alembic
+script_location = database/migrations
+script_location = %(here)s/database/migrations
+```
+
+If `alembic.ini` is in a non-standard location, tell the panel where to look:
+
+```python
+from pathlib import Path
+
+config = AdminConfig(
+    secret_key="...",
+    project_root=Path("/path/to/dir/containing/alembic.ini"),
+)
+```
+
+---
+
+### Way 2 — Pass `base=` directly (no Alembic required)
+
+If you don't use Alembic, or want to be explicit, pass your `DeclarativeBase`
+class directly. The panel skips all file discovery.
+
+```python
+# main.py
+import os
+from fastapi import FastAPI
+from sqlalchemy import create_engine
+from fastapi_admin_panel import AdminPanel, AdminConfig
+
+from myapp.database import Base   # your DeclarativeBase
+from myapp import models           # noqa: F401 — register all models
+
+app = FastAPI()
+engine = create_engine(os.environ["DATABASE_URL"])
+
+config = AdminConfig(secret_key=os.environ["ADMIN_SECRET_KEY"])
+panel = AdminPanel(app, engine, config=config, base=Base)
+```
+
+> **Important:** Import your model modules before creating `AdminPanel`.
+> `Base` alone isn't enough — SQLAlchemy only knows about models that have
+> been imported at least once.
+
+---
+
+### Way 3 — Add panel table to your Alembic migrations
+
+By default the panel creates its `admin_panel_users` table automatically at
+startup (`CREATE TABLE IF NOT EXISTS`). If you prefer the table to be managed
+by your own Alembic migrations (so it appears in `alembic revision --autogenerate`),
+include the panel's metadata in your `env.py`:
+
+```python
+# alembic/env.py
+from myapp.database import Base
+from fastapi_admin_panel import admin_metadata   # ← add this
+
+# Combine your metadata with the panel's metadata
+target_metadata = [Base.metadata, admin_metadata]
+```
+
+Then generate and run migrations as usual:
+
+```bash
+alembic revision --autogenerate -m "add admin panel users table"
+alembic upgrade head
+```
+
+When using this approach, the panel detects the table already exists and skips
+its auto-create step.
+
+---
+
+### Async engine support
+
+If you use an async engine (`asyncpg`, `aiosqlite`, etc.) the panel cannot
+run its bootstrap at import time. Call `await panel.bootstrap()` inside your
+lifespan:
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import create_async_engine
+from fastapi_admin_panel import AdminPanel, AdminConfig
+
+from myapp.database import Base
+from myapp import models  # noqa: F401
+
+engine = create_async_engine(os.environ["DATABASE_URL"])
+config = AdminConfig(secret_key=os.environ["ADMIN_SECRET_KEY"])
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await panel.bootstrap()   # ← must be first
+    yield
+
+app = FastAPI(lifespan=lifespan)
+panel = AdminPanel(app, engine, config=config, base=Base)
+```
 
 ---
 
@@ -88,79 +175,51 @@ from pathlib import Path
 
 config = AdminConfig(
     # ── Required ────────────────────────────────────────────────────────────
-    secret_key="your-random-secret-key",   # use secrets.token_hex(32)
+    secret_key="...",              # use: import secrets; secrets.token_hex(32)
 
     # ── UI ──────────────────────────────────────────────────────────────────
-    title="Admin Panel",           # shown in the sidebar and browser tab
-    prefix="/admin",               # URL prefix for the admin panel
+    title="Admin Panel",           # shown in sidebar and browser tab
+    prefix="/admin",               # URL prefix  →  http://host/admin
 
     # ── Behaviour ───────────────────────────────────────────────────────────
     page_size=50,                  # default rows per page
     allow_delete=True,             # set False to disable Delete globally
-    models_exclude=["AuditLog"],   # model class names to hide
+    models_exclude=["AuditLog"],   # model class names to hide from the panel
 
     # ── Auth ────────────────────────────────────────────────────────────────
     token_expire_hours=8,
     initial_admin_username="admin",
-    initial_admin_password="admin",   # CHANGE before production
+    initial_admin_password="admin",   # change before production
 
     # ── Discovery ───────────────────────────────────────────────────────────
-    # Only needed if alembic.ini is not next to main.py
-    project_root=Path(__file__).parent,
+    project_root=Path(__file__).parent,   # dir containing alembic.ini
 )
 ```
 
----
-
-## Alembic compatibility
-
-The panel reads `alembic.ini` automatically. All common layouts work:
-
-```ini
-# Standard
-script_location = alembic
-
-# Custom nested path
-script_location = database/migrations
-
-# %(here)s interpolation
-script_location = %(here)s/database/migrations
-```
-
-Inline comments in `alembic.ini` are handled correctly.
-
-If `alembic.ini` is in a non-standard location:
-```python
-config = AdminConfig(
-    secret_key="...",
-    project_root=Path("/path/to/dir/containing/alembic.ini"),
-)
-```
-
-Or bypass Alembic discovery entirely by passing `base=` directly:
-```python
-from myapp.database import Base
-panel = AdminPanel(app, engine, config=config, base=Base)
-```
+All fields have defaults. The only one you should always set explicitly is
+`secret_key`.
 
 ---
 
 ## First login
 
-On first startup an admin user is created automatically:
+On first startup an admin user is seeded automatically:
 
 | Field | Default |
 |---|---|
 | Username | `admin` |
 | Password | `admin` |
 
-**Change the password before going to production.**
+The seed runs **once** — only when `admin_panel_users` is empty. After that,
+manage accounts through the panel UI at **System → Admin Users**, or reset
+via SQL:
 
-The user is only seeded once (when `admin_panel_users` is empty). After that,
-use the Admin Users page inside the panel, or update the DB directly:
+```bash
+# Generate a bcrypt hash
+python -c "from fastapi_admin_panel.auth.utils import hash_password; print(hash_password('newpass'))"
+```
 
 ```sql
--- python -c "from fastapi_admin_panel.auth.utils import hash_password; print(hash_password('newpass'))"
 UPDATE admin_panel_users SET hashed_password = '<hash>' WHERE username = 'admin';
 ```
 
@@ -168,62 +227,30 @@ UPDATE admin_panel_users SET hashed_password = '<hash>' WHERE username = 'admin'
 
 ## Admin Users page
 
-The panel ships with a built-in user management UI at `System → Admin Users`:
+The built-in **System → Admin Users** page lets you:
 
-- Create new admin accounts with username + password
-- Edit username or toggle active/inactive status
-- Change password for any account
-- Delete accounts (cannot delete the last active admin)
+- Create new admin accounts (username + password)
+- Edit username or toggle active/inactive
+- Change any account's password
+- Delete accounts
 
-This means you never need to touch the DB directly to manage panel access.
-
----
-
-## Building the frontend
-
-```bash
-# First time (installs npm deps + builds)
-python scripts/build.py
-
-# Subsequent builds (skip npm install)
-python scripts/build.py --no-install
-```
-
-Build output goes to `fastapi_admin_panel/static/` and is served automatically.
-
-When building the wheel (`python -m build`), the hatchling hook runs
-`npm install && npm run build` automatically.
+No DB access needed to manage panel users after initial setup.
 
 ---
 
-## Development mode
-
-```bash
-# Terminal 1 — FastAPI backend
-uvicorn myapp.main:app --reload
-
-# Terminal 2 — Vite dev server (proxies /admin/api to :8000)
-cd frontend
-npm install
-npm run dev
-```
-
-Open [http://localhost:5173/admin/](http://localhost:5173/admin/) for hot-reload.
-
----
-
-## Full main.py example
+## Full example
 
 ```python
 import os
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy import create_engine
 
 from myapp.models import Base
-from myapp import models  # noqa: F401 — ensure all models are registered
+from myapp import models  # noqa: F401
 
 from fastapi_admin_panel import AdminPanel, AdminConfig
 
@@ -252,108 +279,63 @@ def root():
 
 ---
 
-## Project structure
+## Performance impact in production
 
-```
-FastApiAdminPanel/
-├── fastapi_admin_panel/       # Python package
-│   ├── config.py              # AdminConfig dataclass
-│   ├── panel.py               # AdminPanel class
-│   ├── auth/
-│   │   ├── models.py          # admin_panel_users table
-│   │   ├── router.py          # /login /logout /me endpoints
-│   │   ├── deps.py            # JWT auth FastAPI dependency
-│   │   └── utils.py           # hash_password, create_token, decode_token
-│   ├── api/
-│   │   ├── router.py          # dynamic CRUD routes
-│   │   └── crud.py            # list/get/create/update/delete
-│   ├── discovery/
-│   │   ├── alembic_parser.py  # reads alembic.ini + env.py
-│   │   └── model_inspector.py # introspects SQLAlchemy models
-│   └── static/                # built React frontend (git-ignored)
-├── frontend/                  # React + TypeScript + Vite source
-│   └── src/
-│       ├── pages/Login.tsx
-│       ├── pages/Dashboard.tsx
-│       ├── pages/ModelList.tsx
-│       ├── pages/ModelForm.tsx
-│       └── pages/SystemUsers.tsx
-├── scripts/build.py           # manual frontend build script
-├── hatch_build.py             # auto-builds frontend on pip install
-└── pyproject.toml
-```
+**TL;DR: zero impact on your existing routes.**
+
+- **Startup:** model introspection is in-memory (iterating registered mappers), < 1 ms. Route registration for 50 models adds < 1 ms.
+- **Per request:** admin routes live under `config.prefix` only. No global middleware is added. Your existing routes see zero overhead.
+- **Database:** no second connection pool. One short-lived connection per admin request, same pool as your app.
+- **Memory:** the built frontend is ~200 KB (gzipped), loaded once at startup.
+
+If you want to remove the admin surface from the internet entirely, block
+`/admin` at the reverse-proxy level (nginx `allow`/`deny` by IP).
 
 ---
 
-## Performance impact in production
+## Development (from source)
 
-**TL;DR: zero impact on your existing routes and request latency.**
+```bash
+git clone https://github.com/yourname/fastapi-admin-panel
+cd fastapi-admin-panel
+pip install -e ".[dev]"
+python scripts/build.py          # installs npm deps + builds frontend
 
-### Startup (one-time cost)
+# Hot-reload during development
+# Terminal 1
+uvicorn myapp.main:app --reload
+# Terminal 2
+cd frontend && npm run dev       # Vite proxies /admin/api → :8000
+```
 
-When `AdminPanel(app, engine, config=config)` is called, two things happen:
-
-1. **Model introspection** — SQLAlchemy's `MetaData` is already in memory; the panel just iterates the registered mappers. This is microseconds, not milliseconds, regardless of how many models you have.
-2. **Route registration** — FastAPI registers roughly `N_models × 5` routes (list, get, create, update, delete) under `config.prefix`. Even with 50 models, route registration takes < 1 ms.
-
-The one actual I/O cost is the `admin_panel_users` table check + seed on the very first request, which is a single `SELECT COUNT(*)` followed by at most one `INSERT`.
-
-### Per-request overhead
-
-- Admin routes are isolated under your chosen prefix (default `/admin`).
-- Requests to your normal API endpoints (`/api/...`, `/`, etc.) go through **zero** admin middleware. The panel does not add any global middleware or startup handler.
-- Admin API calls use the same SQLAlchemy `sessionmaker` pattern as your own code — no second connection pool is created. One additional short-lived connection is used per admin request.
-
-### Measured numbers (rough, 4-core server, PostgreSQL on localhost)
-
-| Operation | Median latency |
-|---|---|
-| Panel startup (model scan, no I/O) | ~0.5 ms |
-| `GET /admin/api/models` (schema list) | ~2 ms |
-| `GET /admin/api/{model}/rows?limit=50` | ~5–15 ms (depends on table size + DB) |
-| Your existing routes (unchanged) | **0 ms overhead** |
-
-### Summary
-
-- Production app request paths: **unaffected**
-- Startup time added: **< 1 ms** for model scan + route registration
-- Memory: the built React frontend is ~200 KB (gzipped) loaded once into `static/` at startup; no per-request allocation
-
-If you're worried about the admin surface itself being a target, restrict `/admin` at your reverse proxy (nginx `allow`/`deny` directives by IP) — that costs nothing and removes the endpoint from the internet entirely.
+Open [http://localhost:5173/admin/](http://localhost:5173/admin/).
 
 ---
 
 ## Security checklist before production
 
 - [ ] Set `secret_key` from an environment variable, never hardcode it
-- [ ] Change `initial_admin_password` (or set via env var)
+- [ ] Change `initial_admin_password` before first deploy
 - [ ] Serve behind HTTPS (nginx / Caddy / cloud load balancer)
 - [ ] Set `allow_delete=False` if deletes aren't needed in production
 - [ ] Use `models_exclude` to hide sensitive internal tables
 - [ ] Restrict `/admin` access by IP at the reverse-proxy level
-- [ ] Rotate the admin password after the first login
+- [ ] Rotate the admin password after first login
 
 ---
 
 ## Contributing
 
-This is a self-funded hobby project — there's no company behind it, just spare-time development. All contributions are welcome:
+No company behind this — just spare-time development. All contributions welcome:
 
 - **Bug reports** — open an issue with steps to reproduce
 - **Feature requests** — open an issue describing the use case
-- **Pull requests** — fork, branch, PR; small focused changes are easiest to review
-- **Documentation fixes** — typos, unclear wording, missing examples
-
-There's no formal CLA or contributor agreement. By submitting a PR you agree your changes are contributed under the project's license.
+- **Pull requests** — small focused changes are easiest to review
+- **Docs** — typos, unclear wording, missing examples
 
 ```bash
-# Fork the repo, then:
 git clone https://github.com/yourname/fastapi-admin-panel
-cd fastapi-admin-panel
 pip install -e ".[dev]"
 python scripts/build.py
-
-# Make your changes, then:
 pytest
-python scripts/build.py --no-install   # verify frontend still builds
 ```
