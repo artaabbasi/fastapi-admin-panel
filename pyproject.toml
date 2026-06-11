@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "auto-fastapi-admin-panel"
-version = "0.1.2"
+version = "0.1.3"
 description = "Drop-in admin panel for FastAPI + SQLAlchemy projects. Auto-discovers your models via Alembic, provides full CRUD, JWT auth, and a dark React UI — integrated in 3 lines."
 readme = "README.md"
 license = { text = "MIT" }
