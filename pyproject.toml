@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "fastapi>=0.110.0",
+    "fastapi>=0.100.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.13.0",
     "aiofiles>=23.0.0",
