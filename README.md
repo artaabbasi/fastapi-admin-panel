@@ -145,6 +145,7 @@ run its bootstrap at import time. Call `await panel.bootstrap()` inside your
 lifespan:
 
 ```python
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -154,16 +155,93 @@ from myapp.database import Base
 from myapp import models  # noqa: F401
 
 engine = create_async_engine(os.environ["DATABASE_URL"])
-config = AdminConfig(secret_key=os.environ["ADMIN_SECRET_KEY"])
+
+config = AdminConfig(
+    secret_key=os.environ["ADMIN_SECRET_KEY"],
+    title="My Project Admin",
+    prefix="/admin",
+    page_size=50,
+    allow_delete=True,
+    initial_admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"),
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await panel.bootstrap()   # ← must be first
+    await panel.bootstrap()   # ← must be first; creates table + seeds admin user
     yield
 
 app = FastAPI(lifespan=lifespan)
 panel = AdminPanel(app, engine, config=config, base=Base)
 ```
+
+---
+
+### Dedicated admin module (clean architecture)
+
+For larger projects, keep all admin-related setup in its own file so `main.py`
+stays focused on your application logic.
+
+**`admin.py`** — owns the engine, config, and panel singleton:
+
+```python
+import os
+from pathlib import Path
+from sqlalchemy.ext.asyncio import create_async_engine
+from fastapi_admin_panel import AdminPanel, AdminConfig
+
+from myapp.database import Base
+from myapp import models  # noqa: F401
+
+engine = create_async_engine(os.environ["DATABASE_URL"])
+
+config = AdminConfig(
+    secret_key=os.environ.get("ADMIN_SECRET_KEY", "CHANGE-ME"),
+    title="My Project Admin",
+    prefix="/admin",
+    page_size=50,
+    allow_delete=True,
+    models_exclude=["AlembicVersion"],
+    token_expire_hours=8,
+    initial_admin_username="admin",
+    initial_admin_password=os.environ.get("ADMIN_PASSWORD", "changeme"),
+    project_root=Path(__file__).parent,
+)
+
+panel: AdminPanel | None = None
+
+def init_admin(app) -> AdminPanel:
+    """Register all admin routes and return the panel instance."""
+    global panel
+    panel = AdminPanel(app, engine, config=config)
+    return panel
+```
+
+**`main.py`** — imports and wires up the panel in the lifespan:
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from admin import init_admin, panel as _admin_panel
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. Register routes
+    init_admin(app)
+    # 2. Async DB bootstrap (creates table, seeds first admin user)
+    if _admin_panel is not None:
+        await _admin_panel.bootstrap()
+    # 3. Your own startup logic here
+    yield
+    # 4. Cleanup
+
+app = FastAPI(title="My API", lifespan=lifespan)
+
+@app.get("/")
+async def root():
+    return {"status": "ok"}
+```
+
+Full working examples are in the [`examples/`](examples/) directory.
 
 ---
 
