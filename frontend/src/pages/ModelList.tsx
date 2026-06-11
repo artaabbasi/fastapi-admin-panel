@@ -352,11 +352,11 @@ export function ModelList({ schema, allowDelete = true, pageSize = 50 }: ModelLi
                       </td>
                     ))}
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7 cursor-pointer"
+                          className="h-7 w-7 cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent"
                           title="Edit record"
                           onClick={() => openEdit(row)}
                         >
@@ -366,7 +366,7 @@ export function ModelList({ schema, allowDelete = true, pageSize = 50 }: ModelLi
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="h-7 w-7 text-destructive/70 hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                            className="h-7 w-7 cursor-pointer text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             title="Delete record"
                             onClick={() => handleDelete(pk)}
                           >

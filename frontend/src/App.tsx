@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LogOut, User } from "lucide-react";
+import { LogOut, Moon, Sun, User } from "lucide-react";
 import { adminConfig, api, auth, tokenStorage } from "@/api/client";
 import { Sidebar } from "@/components/Sidebar";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,19 @@ export default function App() {
   const [activeModel, setActiveModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">(
+    () => (localStorage.getItem("theme") ?? "dark") as "dark" | "light"
+  );
   const mainRef = useRef<HTMLElement>(null);
+
+  function toggleTheme() {
+    setTheme((t) => {
+      const next = t === "dark" ? "light" : "dark";
+      document.documentElement.classList.toggle("dark", next === "dark");
+      localStorage.setItem("theme", next);
+      return next;
+    });
+  }
 
   // Load config + models after authentication
   useEffect(() => {
@@ -85,6 +97,17 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <header className="h-14 border-b border-border bg-card/60 backdrop-blur-sm flex items-center justify-end px-6 gap-3 shrink-0">
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
+
           {currentUser && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/60 border border-border text-xs">
               <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
